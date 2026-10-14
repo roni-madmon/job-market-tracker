@@ -139,7 +139,36 @@ Posting counts can change between runs.
 - The chart summarizes the latest collection. Historical trend
   visualization has not yet been implemented.
 
-## Next milestone
+## Automation
 
-Add scheduled and manually triggered GitHub Actions runs, with
-persistence of the updated database and reports.
+The pipeline runs through GitHub Actions using
+[the workflow configuration](.github/workflows/job_market_etl.yml).
+
+- Scheduled daily at 06:17 UTC.
+- Supports manual execution from Actions → Daily Job Market ETL → Run workflow.
+- Runs on GitHub infrastructure, independently of the local computer.
+- Commits the updated SQLite database, CSV report, and chart to `main`
+  after a successful pipeline run.
+- Retains raw JSON snapshots as downloadable workflow artifacts for 14 days.
+- Prevents simultaneous executions of this workflow.
+
+Scheduled runs may be delayed by GitHub Actions.
+
+The first manual GitHub Actions run completed successfully.
+Its output commit was pulled locally, confirming that the new
+collection was added while previous collection history was preserved.
+
+## Continuing local development
+
+Before editing or running the project locally, synchronize the
+latest automated updates with `git pull --ff-only`.
+
+This keeps the local database and reports aligned with the
+latest successful GitHub Actions run.
+
+## Planned extensions
+
+- Monitor additional company job boards.
+- Analyze experience requirements in descriptions to improve
+  identification of student and entry-level opportunities.
+- Visualize changes across collection dates.
