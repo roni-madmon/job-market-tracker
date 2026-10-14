@@ -1,0 +1,29 @@
+# Python environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local editor settings and environment variables
+.vscode/
+.env
+.env.*
+!.env.example
+
+# Raw snapshots are kept locally
+/data/raw/
+
+# Temporary SQLite files
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm
+
+# Logs and local backups
+*.log
+*.bak
+
+# Intentionally versioned:
+# data/job_market.sqlite3
+# reports/technology_mentions.csv
+# reports/technology_mentions.png

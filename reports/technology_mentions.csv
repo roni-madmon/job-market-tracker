@@ -1,0 +1,16 @@
+﻿technology,posting_count,posting_share_pct,collection_id,source,board_token,snapshot_saved_at_utc,analyzed_posting_count,empty_description_count
+AWS,9,64.3,4,greenhouse,similarweb,2026-10-14T20:27:16.224650+00:00,14,0
+Python,9,64.3,4,greenhouse,similarweb,2026-10-14T20:27:16.224650+00:00,14,0
+Spark,7,50.0,4,greenhouse,similarweb,2026-10-14T20:27:16.224650+00:00,14,0
+SQL,6,42.9,4,greenhouse,similarweb,2026-10-14T20:27:16.224650+00:00,14,0
+Databricks,4,28.6,4,greenhouse,similarweb,2026-10-14T20:27:16.224650+00:00,14,0
+Airflow,3,21.4,4,greenhouse,similarweb,2026-10-14T20:27:16.224650+00:00,14,0
+Azure,2,14.3,4,greenhouse,similarweb,2026-10-14T20:27:16.224650+00:00,14,0
+Docker,2,14.3,4,greenhouse,similarweb,2026-10-14T20:27:16.224650+00:00,14,0
+GCP,2,14.3,4,greenhouse,similarweb,2026-10-14T20:27:16.224650+00:00,14,0
+Kubernetes,2,14.3,4,greenhouse,similarweb,2026-10-14T20:27:16.224650+00:00,14,0
+Looker,2,14.3,4,greenhouse,similarweb,2026-10-14T20:27:16.224650+00:00,14,0
+Tableau,2,14.3,4,greenhouse,similarweb,2026-10-14T20:27:16.224650+00:00,14,0
+Excel,1,7.1,4,greenhouse,similarweb,2026-10-14T20:27:16.224650+00:00,14,0
+Java,1,7.1,4,greenhouse,similarweb,2026-10-14T20:27:16.224650+00:00,14,0
+Pandas,1,7.1,4,greenhouse,similarweb,2026-10-14T20:27:16.224650+00:00,14,0
