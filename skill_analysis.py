@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from config import GREENHOUSE_BOARDS
+
 
 SKILL_RULES = {
     "Python": r"\bpython\b",
@@ -84,59 +86,105 @@ def extract_skills(text: str) -> list[str]:
 
 def read_latest_matched_jobs(
     database_path: Path,
-) -> tuple[dict, pd.DataFrame]:
-    """Read matched Israel postings from the latest Similarweb collection.
+    board_tokens: tuple[str, ...] | None = None,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Read the latest collection and matched Israel postings per board.
+
+    Rank collections by snapshot time, including collections with zero
+    matches. A board without a stored collection is an error, so an
+    incomplete monitoring scope cannot silently produce a full report.
+
+    Args:
+        database_path: SQLite database containing collection history.
+        board_tokens: Boards to include; defaults to GREENHOUSE_BOARDS.
 
     Returns:
-        Collection metadata and a DataFrame of matched postings.
+        A collection-metadata table and a matched-postings table.
+        Posting identity includes its board and collection, since posting
+        IDs can overlap across boards.
 
     Raises:
         FileNotFoundError: If the database does not exist.
-        ValueError: If no Similarweb collection has been stored.
+        ValueError: If the requested scope is empty, duplicated or missing.
     """
     if not database_path.is_file():
         raise FileNotFoundError("Database not found. Run main.py first.")
 
+    if board_tokens is None:
+        board_tokens = tuple(GREENHOUSE_BOARDS)
+    if not board_tokens or len(set(board_tokens)) != len(board_tokens):
+        raise ValueError("Provide at least one board, without duplicates.")
+
+    placeholders = ", ".join("?" for _ in board_tokens)
     database_uri = database_path.resolve().as_uri() + "?mode=ro"
     with closing(sqlite3.connect(database_uri, uri=True)) as connection:
-        connection.row_factory = sqlite3.Row
-
-        collection = connection.execute(
-            """
-            SELECT collection_id, source, board_token,
-                   snapshot_saved_at_utc
-            FROM collection_runs
-            WHERE source = ? AND board_token = ?
-            ORDER BY snapshot_saved_at_utc DESC, collection_id DESC
-            LIMIT 1
-            """,
-            ("greenhouse", "similarweb"),
-        ).fetchone()
-
-        if collection is None:
-            raise ValueError("No Similarweb collection found.")
-
-        jobs = pd.read_sql_query(
-            """
-            SELECT posting_id, job_title, description_html
-            FROM job_snapshots
-            WHERE collection_id = ?
-              AND country = 'Israel'
-              AND role_match_status = 'matched'
-            ORDER BY job_title, posting_id
+        rows = pd.read_sql_query(
+            f"""
+            WITH ranked_collections AS (
+                SELECT collection_id, source, board_token,
+                       snapshot_saved_at_utc, raw_posting_count,
+                       israel_posting_count,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY source, board_token
+                           ORDER BY snapshot_saved_at_utc DESC,
+                                    collection_id DESC
+                       ) AS collection_rank
+                FROM collection_runs
+                WHERE source = ? AND board_token IN ({placeholders})
+            )
+            SELECT c.collection_id, c.source, c.board_token,
+                   c.snapshot_saved_at_utc, c.raw_posting_count,
+                   c.israel_posting_count,
+                   j.posting_id, j.job_title, j.description_html
+            FROM ranked_collections AS c
+            LEFT JOIN job_snapshots AS j
+              ON j.collection_id = c.collection_id
+             AND j.country = 'Israel'
+             AND j.role_match_status = 'matched'
+            WHERE c.collection_rank = 1
+            ORDER BY c.board_token, j.job_title, j.posting_id
             """,
             connection,
-            params=(collection["collection_id"],),
+            params=("greenhouse", *board_tokens),
         )
 
-    return dict(collection), jobs
+    metadata_columns = [
+        "collection_id", "source", "board_token", "snapshot_saved_at_utc",
+        "raw_posting_count", "israel_posting_count",
+    ]
+    collections = rows[metadata_columns].drop_duplicates().copy()
+    missing = set(board_tokens) - set(collections["board_token"])
+    if missing:
+        raise ValueError(
+            f"No stored collection for: {', '.join(sorted(missing))}. "
+            "Run main.py to collect all configured boards."
+        )
+
+    # Preserve configuration order in the coverage report and chart labels.
+    collections = (
+        collections.set_index("board_token")
+        .loc[list(board_tokens)]
+        .reset_index()
+    )
+    jobs = rows.loc[
+        rows["posting_id"].notna(),
+        [
+            "collection_id", "source", "board_token",
+            "posting_id", "job_title", "description_html",
+        ],
+    ].reset_index(drop=True)
+    matched_counts = jobs.groupby("board_token").size()
+    collections["matched_posting_count"] = (
+        collections["board_token"].map(matched_counts).fillna(0).astype(int)
+    )
+    return collections, jobs
 
 
 if __name__ == "__main__":
     project_dir = Path(__file__).resolve().parent
     database_path = project_dir / "data" / "job_market.sqlite3"
 
-    collection, jobs_df = read_latest_matched_jobs(database_path)
+    collections, jobs_df = read_latest_matched_jobs(database_path)
 
     jobs_df["description_text"] = jobs_df["description_html"].map(
         html_to_text
@@ -152,8 +200,13 @@ if __name__ == "__main__":
         .rename("posting_count")
     )
 
-    print(f"Collection ID: {collection['collection_id']}")
-    print(f"Collected at (UTC): {collection['snapshot_saved_at_utc']}")
+    print("Latest stored collection per board:")
+    print(collections[
+        [
+            "board_token", "collection_id", "snapshot_saved_at_utc",
+            "matched_posting_count",
+        ]
+    ].to_string(index=False))
     print(f"Matched postings analyzed: {len(jobs_df)}")
     print(
         "Empty descriptions: "
@@ -164,6 +217,6 @@ if __name__ == "__main__":
     print(counts.to_string() if not counts.empty else "No matches found.")
 
     print("\nSample postings:")
-    sample = jobs_df[["job_title", "skills"]].head(5).copy()
+    sample = jobs_df[["board_token", "job_title", "skills"]].head(5).copy()
     sample["skills"] = sample["skills"].map(", ".join)
     print(sample.to_string(index=False))

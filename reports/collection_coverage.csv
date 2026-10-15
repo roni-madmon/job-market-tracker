@@ -1,0 +1,4 @@
+﻿company,board_token,collection_id,source,snapshot_saved_at_utc,raw_posting_count,israel_posting_count,matched_posting_count,empty_description_count
+Similarweb,similarweb,11,greenhouse,2026-10-15T18:23:52.385371+00:00,71,29,14,0
+Forter,forter,12,greenhouse,2026-10-15T18:23:53.737850+00:00,21,4,0,0
+Gong,gongio,13,greenhouse,2026-10-15T18:23:55.235888+00:00,99,15,3,0
