@@ -4,6 +4,7 @@ on:
   workflow_dispatch:
   schedule:
     - cron: "17 6 * * *"
+    - cron: "7 9 * * *" # Temporary schedule test; remove after verification
 
 permissions:
   contents: write
