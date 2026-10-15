@@ -166,6 +166,10 @@ latest automated updates with `git pull --ff-only`.
 This keeps the local database and reports aligned with the
 latest successful GitHub Actions run.
 
+Scheduled execution was verified on 2026-10-15.
+Two runs triggered by `schedule` completed successfully, and their
+database and report updates were pulled into the local repository.
+
 ## Planned extensions
 
 - Monitor additional company job boards.
