@@ -20,7 +20,11 @@ ROLE_RULES = {
         r"|\b(?:backend|software)\s+engineer\b.*\b(?:ai|ml)\b"
     ),
 }
-
+# Broader title signals require review when no role rule matches.
+ROLE_REVIEW_PATTERN = (
+    r"\b(?:analyst|ai|ml|agents?|agentic)\b"
+    r"|\bmachine[\s-]+learning\b"
+)
 SENIORITY_RULES = {
     "senior_or_lead": (
         r"\b(?:senior|sr|lead|principal|staff|director|head)\b"
@@ -58,8 +62,12 @@ def classify_jobs(df: pd.DataFrame) -> pd.DataFrame:
         result.loc[mask, "role_match_status"] = "matched"
 
     review_mask = (
-        result["role_match_status"].eq("not_matched")
-        & titles.str.contains(r"\bagents?\b", case=False, na=False)
+    result["role_match_status"].eq("not_matched")
+    & titles.str.contains(
+        ROLE_REVIEW_PATTERN,
+        case=False,
+        na=False,
+        )
     )
     result.loc[review_mask, "role_match_status"] = "needs_review"
 
