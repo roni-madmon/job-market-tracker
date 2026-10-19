@@ -38,6 +38,10 @@ jobs:
         run: python -m unittest discover -s tests -v
 
       - name: Run the ETL pipeline
+        env:
+          JOB_SOURCE: ${{ vars.JOB_SOURCE || 'greenhouse' }}
+          JSEARCH_PROVIDER: ${{ vars.JSEARCH_PROVIDER || 'openwebninja' }}
+          JSEARCH_API_KEY: ${{ secrets.JSEARCH_API_KEY }}
         run: python main.py
 
       - name: Preserve raw snapshots for inspection
@@ -54,7 +58,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add data/job_market.sqlite3 reports/technology_mentions.csv reports/technology_mentions.png reports/collection_coverage.csv
+          git add data/job_market.sqlite3 reports/technology_mentions.csv reports/technology_mentions.png reports/collection_coverage.csv reports/job_classifications.csv
 
           if git diff --cached --quiet; then
             echo "No changes to save."

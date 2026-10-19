@@ -2,27 +2,37 @@
 
 A Python ETL pipeline that collects public job postings, preserves
 collection history in SQLite, and visualizes technology mentions
-in Israel-based Data, BI, and AI-related roles.
+in Israel-based Data, BI, AI, software, and DevOps-related roles.
 
 ## Project goal
 
 Build a reproducible workflow for exploring job requirements and
 changes across collection dates.
 
-The pipeline is configured to monitor Similarweb, Forter and Gong,
-including all seniority levels. Identifying student and entry-level
-opportunities from description requirements is a future extension.
+Two collection modes are available:
+
+- `JOB_SOURCE=greenhouse` monitors Similarweb, Forter and Gong without an API key.
+- `JOB_SOURCE=jsearch` searches across employers using Data Student,
+  Software Student, and DevOps Student queries in Israel.
+
+Greenhouse remains the default until JSearch credentials are configured.
+[Follow the JSearch setup guide](docs/jsearch_setup.md) to switch the daily
+workflow. The code supports both the direct OpenWeb Ninja and RapidAPI gateways.
+Student/entry-level labels are explainable candidates for human review.
 
 ## Current implementation
 
-- Fetch public job postings and full descriptions from Greenhouse.
+- Fetch public postings from Greenhouse or query-based results from JSearch.
+- Preserve full descriptions and deduplicate repeated JSearch job IDs across queries.
 - Save raw job records with UTC collection metadata as JSON snapshots.
 - Normalize nested fields and clean text columns using Pandas.
-- Filter locations using explicit Israel and Tel Aviv matching rules.
-- Assign job-family, role-match, and seniority hints using title rules.
+- Check JSearch country codes and use location-text rules when a code is missing.
+- Assign Data/BI/AI, software and DevOps families, title seniority hints,
+  and student/entry-level candidate labels with evidence and rule version.
 - Validate records and store collection history in SQLite.
 - Extract technology mentions from job descriptions.
-- Generate technology-mention and collection-coverage CSV reports and a Matplotlib chart.
+- Generate technology-mention, collection-coverage and per-job classification CSVs,
+  plus a Matplotlib chart.
 - Run the complete pipeline through `main.py` with progress and error logging.
 
 ## Latest report
@@ -31,10 +41,16 @@ opportunities from description requirements is a future extension.
 
 [View the CSV report](reports/technology_mentions.csv)
 
-Reports analyze title-matched postings from the latest stored
-collection of each configured board. Collections are selected by
-their snapshot timestamps, so historical observations are not added
-to the current posting count.
+In Greenhouse mode, the chart analyzes title-matched postings of all
+seniorities from the latest collection of each board. In JSearch mode,
+it analyzes student/entry-level candidates from the latest complete
+query batch. The provider and scope are recorded in the technology CSV;
+historical observations are not added to current posting counts.
+
+Each successful run also writes `reports/job_classifications.csv`, with
+all Israel postings from the selected source, including role, seniority,
+candidate status, explicit experience evidence, reason, skills, and job URL.
+This includes experienced and uncertain postings so exclusions remain auditable.
 
 [View collection coverage](reports/collection_coverage.csv) for each
 board's collection ID, timestamp, raw and Israel posting counts,
@@ -45,7 +61,10 @@ raise an error instead of silently reducing the reporting scope.
 In the technology CSV, `board_tokens` and `collection_ids` share the
 same order. Snapshot time bounds show the range of collection times.
 The coverage CSV retains these details even when the technology CSV
-has no data rows.
+has no data rows. For JSearch, `board_token` is the versioned query-set
+identifier, and the coverage row describes the whole batch, not one company.
+The `company` column is a display label for that batch. Candidate and analyzed
+counts show the difference between returned jobs and the chart's selected scope.
 
 Each technology is counted once per posting. Percentages use all
 analyzed postings as the denominator. A posting can mention multiple
@@ -59,7 +78,14 @@ technologies, so percentages do not need to sum to 100%.
 - Authentication: No API key required for the public GET endpoint
 - Documentation: [Greenhouse Job Board API](https://docs.greenhouse.io/job-board.html)
 
-The extraction requests full descriptions using `content=true`.
+Greenhouse requests full descriptions using `content=true`.
+
+JSearch uses `country=il`, an Israel location in each query, and one page
+per query. The three-query batch uses three requests per complete run.
+It is a limited search sample, not an exhaustive market crawl. There are
+no automatic retries, extra pages, or automatic subscription changes.
+The raw snapshot records query counts and provider provenance without secrets.
+See the [provider documentation](https://www.openwebninja.com/api/jsearch/docs).
 
 ## Local setup
 
@@ -74,8 +100,8 @@ python -m venv .venv
 ```
 
 A successful run saves one raw snapshot per board, loads the processed
-records into SQLite, and updates the technology CSV, chart, and
-collection-coverage CSV.
+records into SQLite, and updates the technology CSV, chart, coverage CSV,
+and classification CSV. JSearch stores one combined query batch per run.
 
 To regenerate reports from the latest stored collection per board without
 fetching new data:
@@ -92,7 +118,10 @@ displaying that file and rerun `visualize.py`.
 | File | Responsibility |
 | --- | --- |
 | `config.py` | Configure board identifiers and company display names |
-| `extract.py` | Fetch postings from the public API |
+| `extract.py` | Fetch postings from Greenhouse |
+| `extract_search.py` | Fetch a bounded set of JSearch queries |
+| `search_pipeline.py` | Collect, normalize, and report a complete JSearch batch |
+| `opportunity_rules.py` | Explain student/entry-level candidates and uncertain cases |
 | `raw_storage.py` | Save raw records and collection metadata |
 | `transform.py` | Normalize records and apply location rules |
 | `job_rules.py` | Classify job titles and seniority hints |
@@ -104,6 +133,7 @@ displaying that file and rerun `visualize.py`.
 | `main.py` | Coordinate the complete pipeline |
 | `requirements.txt` | Record Python dependencies |
 | `tests/test_multi_company.py` | Check collection selection, reporting, and pipeline failure behavior offline |
+| `tests/test_jsearch.py` | Check API contracts, duplicate removal, country evidence, classifications and failures |
 
 ## Data storage and collection history
 
@@ -115,7 +145,11 @@ The database is stored at `data/job_market.sqlite3`.
 
 All postings passing the Israel location rules are stored, including
 `matched`, `needs_review`, and `not_matched` role statuses.
-Technology reports use only `matched` postings.
+Technology reports use only `matched` postings; JSearch further restricts
+the chart to explicit student, junior or entry-level candidates. The full
+classification CSV keeps every Israel posting from the latest selected scopes.
+Candidate labels are derived from stored descriptions at report time and
+include a rule version; the database retains the original full descriptions.
 
 A collection is identified by its source, board token, and UTC
 snapshot timestamp. Loading the same snapshot again refreshes that
@@ -124,11 +158,16 @@ collection without adding another copy.
 A new extraction creates a new collection. The same posting can
 therefore appear across multiple dates as part of its history.
 
-Each pipeline execution collects every configured board. Board loads
+Each Greenhouse execution collects every configured board. Board loads
 use separate transactions: a later failure leaves earlier successful
 collections available for inspection. Reports are generated after all
 boards complete. Standalone report generation reads the latest stored
 collection per board; the coverage CSV makes their timestamps explicit.
+
+A JSearch execution requires every query to succeed before storing its batch.
+A failed query raises an error instead of saving partial search results as
+success. Historical Greenhouse records stay in the same database, identified
+by their source. Reports select one provider and do not mix the two coverages.
 
 For this small portfolio version, the SQLite database and latest
 reports are included in version control. Raw JSON snapshots,
@@ -150,12 +189,16 @@ Posting counts can change between runs.
 
 ## Interpretation and limitations
 
-- Coverage is limited to the configured companies and does not represent
-  the entire Israeli job market.
+- Coverage is limited to configured boards or the first page of each JSearch
+  query. Neither mode represents the entire Israeli job market.
 - Location matching uses a limited set of text rules and may miss
   other location formats.
-- Role and seniority labels are title-based heuristics. A title
-  without a seniority keyword does not establish junior suitability.
+- Role and seniority labels are title-based heuristics. Candidate rules also
+  recognize a limited set of English experience statements. Missing or
+  unsupported experience wording is not interpreted as zero experience.
+- Candidate labels do not establish eligibility. Conflicting senior/entry
+  signals, alternative requirements, and uncertain roles require review.
+  All qualifications still need to be read before applying.
 - Technology detection uses a configured keyword dictionary.
   Mentions do not necessarily indicate mandatory requirements.
 - The chart summarizes the latest collection per board. Historical trend
@@ -183,7 +226,7 @@ The pipeline runs through GitHub Actions using
 - Supports manual execution from Actions → Daily Job Market ETL → Run workflow.
 - Runs on GitHub infrastructure, independently of the local computer.
 - Runs the offline checks before collecting live data.
-- Commits the updated SQLite database, both CSV reports, and chart to `main`
+- Commits the updated SQLite database, all three CSV reports, and chart to `main`
   after a successful pipeline run.
 - Retains raw JSON snapshots as downloadable workflow artifacts for 14 days.
 - Prevents simultaneous executions of this workflow.
@@ -210,6 +253,6 @@ latest successful GitHub Actions run.
 ## Planned extensions
 
 - Expand the monitored company set after checking source data quality.
-- Analyze experience requirements in descriptions to improve
-  identification of student and entry-level opportunities.
+- Evaluate candidate classification against manually reviewed postings,
+  including Hebrew requirements and more complex experience alternatives.
 - Visualize changes across collection dates.

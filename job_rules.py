@@ -7,27 +7,37 @@ from transform import filter_israel_jobs, transform_jobs
 
 
 ROLE_RULES = {
-    "data_engineering": r"\bdata\s+engineer\b",
-    "data_science": r"\bdata\s+scientist\b",
+    "data_engineering": r"\bdata\s+engineer(?:ing)?\b",
+    "data_science": r"\bdata\s+(?:scientist|science)\b",
     "analytics_bi": (
         r"\b(?:data|product|business)\s+analyst\b"
         r"|\bbusiness\s+analytics\b"
         r"|\bbusiness\s+intelligence\b"
         r"|\bbi\s+(?:analyst|developer|engineer)\b"
+        r"|\bdata\s+(?:student|intern)\b"
     ),
     "ai_related_engineering": (
         r"\b(?:ai|ml|machine\s+learning)\s+engineer\b"
         r"|\b(?:backend|software)\s+engineer\b.*\b(?:ai|ml)\b"
+    ),
+    "devops_cloud": (
+        r"\b(?:devops|sre|site[\s-]+reliability)\b"
+        r"|\bcloud\s+(?:engineer|developer|student|intern)\b"
+    ),
+    "software_engineering": (
+        r"\b(?:software|backend|front[\s-]*end|full[\s-]*stack)\s+"
+        r"(?:engineer(?:ing)?|develop(?:er|ment)|student|intern)\b"
     ),
 }
 # Broader title signals require review when no role rule matches.
 ROLE_REVIEW_PATTERN = (
     r"\b(?:analyst|ai|ml|agents?|agentic)\b"
     r"|\bmachine[\s-]+learning\b"
+    r"|\bdata\b"
 )
 SENIORITY_RULES = {
     "senior_or_lead": (
-        r"\b(?:senior|sr|lead|principal|staff|director|head)\b"
+        r"\b(?:senior|sr|lead|principal|staff|director|head|manager|architect)\b"
         r"|\bteam\s+manager\b"
     ),
     "student_or_intern": r"\b(?:student|intern|internship)\b",

@@ -47,3 +47,4 @@ if __name__ == "__main__":
 
     for table_name, row_count in counts:
         print(f"{table_name}: {row_count} rows")
+    

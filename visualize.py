@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -9,10 +10,11 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 
 from config import GREENHOUSE_BOARDS
+from opportunity_rules import CANDIDATE_STATUSES, classify_opportunities
 from skill_analysis import (
     extract_skills,
     html_to_text,
-    read_latest_matched_jobs,
+    read_latest_jobs,
 )
 
 
@@ -20,21 +22,29 @@ def generate_reports(
     database_path: Path,
     output_dir: Path,
     board_tokens: tuple[str, ...] | None = None,
+    *, source: str = "greenhouse", candidate_only: bool = False,
 ) -> tuple[Path, Path, Path]:
     """Export technology mentions from the latest collection per board.
 
     Args:
         database_path: SQLite database containing processed postings.
         output_dir: Directory for the latest CSV report and PNG chart.
-        board_tokens: Boards to include; defaults to GREENHOUSE_BOARDS.
+        board_tokens: Board/query scopes for the selected provider.
+        source: greenhouse or jsearch; sources are never silently combined.
+        candidate_only: Limit the chart to explicit student/entry-level candidates.
 
     Returns:
         Paths to the technology CSV, chart and collection-coverage CSV.
         Existing reports at these paths are refreshed on each run.
     """
-    collections, jobs_df = read_latest_matched_jobs(
-        database_path, board_tokens=board_tokens,
+    collections, all_jobs = read_latest_jobs(
+        database_path, board_tokens=board_tokens, source=source,
     )
+    all_jobs = classify_opportunities(all_jobs)
+    jobs_df = all_jobs.loc[all_jobs["role_match_status"].eq("matched")].copy()
+    if candidate_only:
+        jobs_df = jobs_df.loc[jobs_df["opportunity_status"].isin(CANDIDATE_STATUSES)].copy()
+    posting_label = "student/entry-level candidates" if candidate_only else "title-matched postings"
 
     descriptions = jobs_df["description_html"].map(html_to_text)
     skills = descriptions.map(extract_skills)
@@ -66,15 +76,19 @@ def generate_reports(
     latest_snapshot = max(snapshot_times)
 
     # Board tokens and collection IDs have the same order in the CSV.
-    report["source"] = "greenhouse"
+    report["source"] = source
+    report["posting_scope"] = "entry_level_candidates" if candidate_only else "all_seniority"
     report["board_tokens"] = ", ".join(collections["board_token"])
     report["collection_ids"] = ", ".join(
         str(value) for value in collections["collection_id"]
     )
     report["snapshot_time_min_utc"] = earliest_snapshot.isoformat()
     report["snapshot_time_max_utc"] = latest_snapshot.isoformat()
-    report["monitored_board_count"] = len(collections)
-    report["contributing_board_count"] = jobs_df["board_token"].nunique()
+    report["monitored_scope_count"] = len(collections)
+    if source == "greenhouse":
+        report["monitored_board_count"] = len(collections)
+        report["contributing_board_count"] = jobs_df["board_token"].nunique()
+    report["employer_count"] = jobs_df["company"].nunique()
     report["analyzed_posting_count"] = total_postings
     report["empty_description_count"] = empty_descriptions
 
@@ -83,7 +97,7 @@ def generate_reports(
     coverage.insert(
         0, "company",
         coverage["board_token"].map(
-            lambda token: GREENHOUSE_BOARDS.get(token, token)
+            lambda token: GREENHOUSE_BOARDS.get(token, token) if source == "greenhouse" else "JSearch student searches"
         ),
     )
     empty_counts = (
@@ -95,6 +109,14 @@ def generate_reports(
         coverage["board_token"].map(empty_counts).fillna(0).astype(int)
     )
 
+    candidate_counts = all_jobs.loc[
+        all_jobs["opportunity_status"].isin(CANDIDATE_STATUSES)
+    ].groupby("board_token").size()
+    analyzed_counts = jobs_df.groupby("board_token").size()
+    coverage["candidate_posting_count"] = coverage["board_token"].map(candidate_counts).fillna(0).astype(int)
+    coverage["analyzed_posting_count"] = coverage["board_token"].map(analyzed_counts).fillna(0).astype(int)
+    coverage["posting_scope"] = "entry_level_candidates" if candidate_only else "all_seniority"
+
     output_dir.mkdir(parents=True, exist_ok=True)
     csv_path = output_dir / "technology_mentions.csv"
     chart_path = output_dir / "technology_mentions.png"
@@ -102,6 +124,9 @@ def generate_reports(
 
     report.to_csv(csv_path, index=False, encoding="utf-8-sig")
     coverage.to_csv(coverage_path, index=False, encoding="utf-8-sig")
+    classifications = all_jobs.drop(columns=["description_html"]).copy()
+    classifications["skills"] = all_jobs["description_html"].map(html_to_text).map(extract_skills).map(", ".join)
+    classifications.to_csv(output_dir / "job_classifications.csv", index=False, encoding="utf-8-sig")
 
     chart_data = report.iloc[::-1]
     height = max(5.0, 0.35 * len(chart_data) + 2.4)
@@ -109,6 +134,11 @@ def generate_reports(
     fig.subplots_adjust(left=0.20, right=0.95, bottom=0.17, top=0.80)
 
     company_labels = ", ".join(coverage["company"])
+    collection_label = (
+        f"Latest collection per board | {len(collections)} boards monitored"
+        if source == "greenhouse"
+        else "Latest JSearch query batch | One page per query | Limited search coverage"
+    )
     collected_range = (
         f"{earliest_snapshot:%Y-%m-%d %H:%M} - "
         f"{latest_snapshot:%Y-%m-%d %H:%M} UTC"
@@ -121,8 +151,8 @@ def generate_reports(
     )
     fig.text(
         0.20, 0.91,
-        f"{company_labels} | Israel | {total_postings} title-matched postings\n"
-        f"Latest collection per board | {len(collections)} boards monitored | "
+        f"{company_labels} | Israel | {total_postings} {posting_label}\n"
+        f"{collection_label} | "
         f"Descriptions: {total_postings - empty_descriptions}/{total_postings}\n"
         f"Snapshot range: {collected_range}",
         ha="left", va="top", fontsize=9, color="#526174",
@@ -130,7 +160,7 @@ def generate_reports(
 
     if chart_data.empty:
         message = (
-            "No title-matched postings in the latest collections."
+            "No postings match the selected report scope in the latest collections."
             if total_postings == 0
             else "No configured technologies detected."
         )
@@ -166,7 +196,8 @@ def generate_reports(
     fig.text(
         0.20, 0.04,
         "Each technology is counted once per posting. Technologies can overlap.\n"
-        "Mentions from monitored boards; all seniority levels included.",
+        + ("Candidate labels require human review; search results do not cover the entire market."
+           if candidate_only else "Mentions from monitored boards; all seniority levels included."),
         fontsize=8.5, color="#526174",
     )
 
@@ -180,9 +211,11 @@ def generate_reports(
 
 if __name__ == "__main__":
     project_dir = Path(__file__).resolve().parent
+    source = os.environ.get("JOB_SOURCE", "greenhouse").strip().lower()
     csv_path, chart_path, coverage_path = generate_reports(
         database_path=project_dir / "data" / "job_market.sqlite3",
-        output_dir=project_dir / "reports",
+        output_dir=project_dir / "reports", source=source,
+        candidate_only=source == "jsearch",
     )
 
     print(f"CSV report saved: {csv_path}")

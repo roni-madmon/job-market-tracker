@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 from pathlib import Path
 
 from config import GREENHOUSE_BOARDS
@@ -64,16 +65,24 @@ def collect_board(board_token: str, database_path: Path) -> int:
     return collection_id
 
 
-def run_pipeline() -> dict[str, int]:
-    """Collect every configured board and then generate combined reports.
+def run_pipeline(source: str = "greenhouse") -> dict[str, int]:
+    """Run the selected provider and generate its latest reports.
 
     Each board is stored in its own transaction. If any stage fails,
     the exception propagates and the run is not reported as successful.
     Previously committed collections remain available for inspection.
 
+    Args:
+        source: greenhouse (company boards) or jsearch (role-query batch).
+
     Returns:
-        A mapping from board tokens to their stored collection IDs.
+        A mapping from board/query scope tokens to stored collection IDs.
     """
+    if source == "jsearch":
+        from search_pipeline import run_search_pipeline
+        return run_search_pipeline()
+    if source != "greenhouse":
+        raise ValueError("JOB_SOURCE must be greenhouse or jsearch.")
     if not GREENHOUSE_BOARDS:
         raise ValueError("Configure at least one Greenhouse board.")
 
@@ -100,6 +109,7 @@ def run_pipeline() -> dict[str, int]:
     logger.info("CSV report saved: %s", csv_path)
     logger.info("Chart saved: %s", chart_path)
     logger.info("Collection coverage saved: %s", coverage_path)
+    logger.info("Classification report saved: %s", project_dir / "reports" / "job_classifications.csv")
     logger.info("Pipeline completed successfully.")
 
     return collection_ids
@@ -112,7 +122,7 @@ if __name__ == "__main__":
     )
 
     try:
-        run_pipeline()
+        run_pipeline(source=os.environ.get("JOB_SOURCE", "greenhouse").strip().lower())
     except Exception:
         logger.exception("Pipeline failed.")
         raise SystemExit(1)
