@@ -2,7 +2,7 @@ import json
 import logging
 import os
 from pathlib import Path
-
+import argparse
 from config import GREENHOUSE_BOARDS
 from database import initialize_database
 from extract import extract_jobs
@@ -115,15 +115,76 @@ def run_pipeline(source: str = "greenhouse") -> dict[str, int]:
     return collection_ids
    
 
-if __name__ == "__main__":
+def cli() -> int:
+    """Choose a data source and run collection or report generation."""
+
+    parser = argparse.ArgumentParser(
+        description="Collect Israel tech jobs and generate technology reports."
+    )
+
+    parser.add_argument(
+        "--source",
+        choices=("greenhouse", "jsearch"),
+        help="Data source. Defaults to JOB_SOURCE or greenhouse.",
+    )
+
+    parser.add_argument(
+        "--report-only",
+        action="store_true",
+        help="Generate reports from saved data without calling an API.",
+    )
+
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Show the full error traceback.",
+    )
+
+    args = parser.parse_args()
+
+    source = (
+        args.source or os.environ.get("JOB_SOURCE", "greenhouse")
+    ).strip().lower()
+
+    if source not in {"greenhouse", "jsearch"}:
+        parser.error("JOB_SOURCE must be greenhouse or jsearch.")
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s | %(levelname)s | %(message)s",
     )
 
+    logger.info("Selected source: %s", source)
+
     try:
-        run_pipeline(source=os.environ.get("JOB_SOURCE", "greenhouse").strip().lower())
-    except Exception:
-        logger.exception("Pipeline failed.")
-        raise SystemExit(1)
-    
+        if args.report_only:
+            project_dir = Path(__file__).resolve().parent
+
+            generate_reports(
+                database_path=project_dir / "data" / "job_market.sqlite3",
+                output_dir=project_dir / "reports",
+                source=source,
+                candidate_only=source == "jsearch",
+            )
+
+            logger.info(
+                "Reports refreshed from saved data. No jobs fetched."
+            )
+        else:
+            run_pipeline(source=source)
+
+        logger.info("Reports are ready in the reports folder.")
+        return 0
+
+    except Exception as error:
+        if args.debug:
+            logger.exception("Run failed.")
+        else:
+            logger.error("Run failed: %s", error)
+            logger.error("Use --debug for the full traceback.")
+
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(cli())
