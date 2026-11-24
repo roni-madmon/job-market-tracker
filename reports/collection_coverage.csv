@@ -1,4 +1,4 @@
 ﻿company,board_token,collection_id,source,snapshot_saved_at_utc,raw_posting_count,israel_posting_count,matched_posting_count,empty_description_count,candidate_posting_count,analyzed_posting_count,posting_scope
-Similarweb,similarweb,119,greenhouse,2026-11-23T18:21:29.539522+00:00,58,21,9,0,0,9,all_seniority
-Forter,forter,120,greenhouse,2026-11-23T18:21:29.696800+00:00,20,7,1,0,0,1,all_seniority
-Gong,gongio,121,greenhouse,2026-11-23T18:21:29.907992+00:00,81,10,3,0,0,3,all_seniority
+Similarweb,similarweb,122,greenhouse,2026-11-24T17:53:38.476326+00:00,60,21,9,0,0,9,all_seniority
+Forter,forter,123,greenhouse,2026-11-24T17:53:38.618134+00:00,19,6,0,0,0,0,all_seniority
+Gong,gongio,124,greenhouse,2026-11-24T17:53:38.738371+00:00,82,11,3,0,0,3,all_seniority
